@@ -39,10 +39,10 @@ void pihole_log_flushed(bool message);
 void memory_check(int which);
 
 void close_socket(char type);
-void seom(char server_message[], int sock);
+void seom(int sock);
+void ssend(int sock, const char *format, ...);
 void swrite(char server_message[], int sock);
 void *socket_listenting_thread(void *args);
-
 void process_request(char *client_message, int *sock);
 bool command(char *client_message, const char* cmd);
 void formatNumber(bool raw, int n, char* buffer);

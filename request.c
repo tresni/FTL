@@ -38,7 +38,6 @@ void process_request(char *client_message, int *sock)
 	char EOT[2];
 	EOT[0] = 0x04;
 	EOT[1] = 0x00;
-	char server_message[SOCKETBUFFERLEN];
 	bool processed = false;
 	if(command(client_message, ">stats"))
 	{
@@ -140,23 +139,21 @@ void process_request(char *client_message, int *sock)
 	else if(command(client_message, ">kill"))
 	{
 		processed = true;
-		sprintf(server_message,"killed\n");
-		swrite(server_message, *sock);
+		ssend(*sock, "killed\n");
 		logg("FTL killed by client ID: %i",*sock);
 		killed = 1;
 	}
 
 	if(!processed)
 	{
-		sprintf(server_message,"unknown command: %s",client_message);
-		swrite(server_message, *sock);
+		ssend(*sock,"unknown command: %s\n",client_message);
 	}
 
 	// End of queryable commands
 	if(*sock != 0)
 	{
 		// Send EOM
-		seom(server_message, *sock);
+		seom(*sock);
 	}
 }
 
@@ -231,8 +228,6 @@ int cmpdesc(const void *a, const void *b)
 
 void getStats(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
-
 	int blocked = counters.blocked + counters.wildcardblocked;
 	int total = counters.queries - counters.invalidqueries;
 	float percentage = 0.0;
@@ -241,29 +236,23 @@ void getStats(int *sock)
 	{
 		percentage = 1e2*blocked/total;
 	}
-
 	switch(blockingstatus)
 	{
 		case 0: // Blocking disabled
-			sprintf(server_message,"domains_being_blocked N/A\n");
-			swrite(server_message, *sock);
+			ssend(*sock,"domains_being_blocked N/A\n");
 			break;
 		default: // Either unknown or enabled
-			sprintf(server_message,"domains_being_blocked %i\n",counters.gravity);
-			swrite(server_message, *sock);
+			ssend(*sock,"domains_being_blocked %i\n",counters.gravity);
 			break;
 	}
-	sprintf(server_message,"dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
+	ssend(*sock,"dns_queries_today %i\nads_blocked_today %i\nads_percentage_today %f\n", \
 	        total,blocked,percentage);
-	swrite(server_message, *sock);
-	sprintf(server_message,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
+	ssend(*sock,"unique_domains %i\nqueries_forwarded %i\nqueries_cached %i\n", \
 	        counters.domains,counters.forwardedqueries,counters.cached);
-	swrite(server_message, *sock);
 
 	// clients_ever_seen: all clients ever seen by FTL
-	sprintf(server_message,"clients_ever_seen %i\n", \
+	ssend(*sock,"clients_ever_seen %i\n", \
 	        counters.clients);
-	swrite(server_message, *sock);
 
 	// unique_clients: count only clients that have been active within the most recent 24 hours
 	int i, activeclients = 0;
@@ -273,23 +262,19 @@ void getStats(int *sock)
 		if(clients[i].count > 0)
 			activeclients++;
 	}
-	sprintf(server_message,"unique_clients %i\n", \
+	ssend(*sock,"unique_clients %i\n", \
 	        activeclients);
-	swrite(server_message, *sock);
 
 	switch(blockingstatus)
 	{
 		case 0: // Blocking disabled
-			sprintf(server_message,"status disabled\n");
-			swrite(server_message, *sock);
+			ssend(*sock,"status disabled\n");
 			break;
 		case 1: // Blocking Enabled
-			sprintf(server_message,"status enabled\n");
-			swrite(server_message, *sock);
+			ssend(*sock,"status enabled\n");
 			break;
 		default: // Unknown status
-			sprintf(server_message,"status unknown\n");
-			swrite(server_message, *sock);
+			ssend(*sock,"status unknown\n");
 			break;
 	}
 
@@ -299,7 +284,6 @@ void getStats(int *sock)
 
 void getOverTime(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int i;
 	bool sendit = false;
 	for(i=0; i < counters.overTime; i++)
@@ -311,8 +295,7 @@ void getOverTime(int *sock)
 		}
 		if(sendit)
 		{
-			sprintf(server_message,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
-			swrite(server_message, *sock);
+			ssend(*sock,"%i %i %i\n",overTime[i].timestamp,overTime[i].total,overTime[i].blocked);
 		}
 	}
 	if(debugclients)
@@ -321,7 +304,6 @@ void getOverTime(int *sock)
 
 void getTopDomains(char *client_message, int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int i, temparray[counters.domains][2], count=10, num;
 	bool blocked = command(client_message, ">top-ads"), audit = false, desc = false;
 
@@ -427,15 +409,13 @@ void getTopDomains(char *client_message, int *sock)
 		if(blocked && showblocked && domains[j].blockedcount > 0)
 		{
 			if(audit && domains[j].wildcard)
-				sprintf(server_message,"%i %i %s wildcard\n",i,domains[j].blockedcount,domains[j].domain);
+				ssend(*sock,"%i %i %s wildcard\n", i, domains[j].blockedcount, domains[j].domain);
 			else
-				sprintf(server_message,"%i %i %s\n",i,domains[j].blockedcount,domains[j].domain);
-			swrite(server_message, *sock);
+				ssend(*sock,"%i %i %s\n", i ,domains[j].blockedcount, domains[j].domain);
 		}
 		else if(!blocked && showpermitted && (domains[j].count - domains[j].blockedcount) > 0)
 		{
-			sprintf(server_message,"%i %i %s\n",i,(domains[j].count - domains[j].blockedcount),domains[j].domain);
-			swrite(server_message, *sock);
+			ssend(*sock,"%i %i %s\n", i, (domains[j].count - domains[j].blockedcount), domains[j].domain);
 		}
 	}
 	if(excludedomains != NULL)
@@ -451,7 +431,6 @@ void getTopDomains(char *client_message, int *sock)
 
 void getTopClients(char *client_message, int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int i, temparray[counters.clients][2], count=10, num;
 
 	if(sscanf(client_message, ">%*[^(](%i)", &num) > 0)
@@ -510,8 +489,7 @@ void getTopClients(char *client_message, int *sock)
 		// - the client made at least one query within the most recent 24 hours
 		if(includezeroclients || clients[j].count > 0)
 		{
-			sprintf(server_message,"%i %i %s %s\n",i,clients[j].count,clients[j].ip,clients[j].name);
-			swrite(server_message, *sock);
+			ssend(*sock, "%i %i %s %s\n", i, clients[j].count, clients[j].ip, clients[j].name);
 		}
 	}
 	if(excludeclients != NULL)
@@ -523,7 +501,6 @@ void getTopClients(char *client_message, int *sock)
 
 void getForwardDestinations(char *client_message, int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	bool allocated = false, sort = true;
 	int i, temparray[counters.forwarded+1][2], forwardedsum = 0, totalqueries = 0;
 
@@ -615,8 +592,7 @@ void getForwardDestinations(char *client_message, int *sock)
 		// Send data if count > 0
 		if(percentage > 0.0)
 		{
-			sprintf(server_message,"%i %.2f %s %s\n",i,percentage,ip,name);
-			swrite(server_message, *sock);
+			ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 		}
 
 		// Free previously allocated memory only if we allocated it
@@ -632,7 +608,6 @@ void getForwardDestinations(char *client_message, int *sock)
 
 void getQueryTypes(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int total = counters.IPv4 + counters.IPv6;
 	double percentageIPv4 = 0.0, percentageIPv6 = 0.0;
 
@@ -643,8 +618,8 @@ void getQueryTypes(int *sock)
 		percentageIPv6 = 1e2*counters.IPv6/total;
 	}
 
-	sprintf(server_message,"A (IPv4): %.2f\nAAAA (IPv6): %.2f\n", percentageIPv4, percentageIPv6);
-	swrite(server_message, *sock);
+	ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\n", percentageIPv4, percentageIPv6);
+
 	if(debugclients)
 		logg("Sent query type data to client, ID: %i", *sock);
 }
@@ -652,8 +627,6 @@ void getQueryTypes(int *sock)
 
 void getAllQueries(char *client_message, int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
-
 	// Exit before processing any data if requested via config setting
 	if(!config.query_display)
 		return;
@@ -805,15 +778,14 @@ void getAllQueries(char *client_message, int *sock)
 		if(!privacymode)
 		{
 			if(strlen(clients[queries[i].clientID].name) > 0)
-				sprintf(server_message,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
+				ssend(*sock, "%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].name,queries[i].status);
 			else
-				sprintf(server_message,"%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
+				ssend(*sock, "%i %s %s %s %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,clients[queries[i].clientID].ip,queries[i].status);
 		}
 		else
 		{
-			sprintf(server_message,"%i %s %s hidden %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
+			ssend(*sock, "%i %s %s hidden %i\n",queries[i].timestamp,type,domains[queries[i].domainID].domain,queries[i].status);
 		}
-		swrite(server_message, *sock);
 	}
 
 	// Free allocated memory
@@ -828,7 +800,6 @@ void getAllQueries(char *client_message, int *sock)
 
 void getRecentBlocked(char *client_message, int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int i, num=1;
 
 	// Exit before processing any data if requested via config setting
@@ -857,8 +828,7 @@ void getRecentBlocked(char *client_message, int *sock)
 		if(queries[i].status == 1 || queries[i].status == 4)
 		{
 			found++;
-			sprintf(server_message,"%s\n",domains[queries[i].domainID].domain);
-			swrite(server_message, *sock);
+			ssend(*sock,"%s\n",domains[queries[i].domainID].domain);
 		}
 
 		if(found >= num)
@@ -870,27 +840,23 @@ void getRecentBlocked(char *client_message, int *sock)
 
 void getMemoryUsage(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
 	char *structprefix = calloc(2, sizeof(char));
 	double formated = 0.0;
 	format_memory_size(structprefix, structbytes, &formated);
-	sprintf(server_message,"memory allocated for internal data structure: %lu bytes (%.2f %sB)\n",structbytes,formated,structprefix);
-	swrite(server_message, *sock);
+	ssend(*sock,"memory allocated for internal data structure: %lu bytes (%.2f %sB)\n",structbytes,formated,structprefix);
 	free(structprefix);
 
 	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.clientnames + memory.forwardedips + memory.forwardednames + memory.forwarddata;
 	char *dynamicprefix = calloc(2, sizeof(char));
 	format_memory_size(dynamicprefix, dynamicbytes, &formated);
-	sprintf(server_message,"dynamically allocated allocated memory used for strings: %lu bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
-	swrite(server_message, *sock);
+	ssend(*sock,"dynamically allocated allocated memory used for strings: %lu bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
 	free(dynamicprefix);
 
 	unsigned long int totalbytes = structbytes + dynamicbytes;
 	char *totalprefix = calloc(2, sizeof(char));
 	format_memory_size(totalprefix, totalbytes, &formated);
-	sprintf(server_message,"Sum: %lu bytes (%.2f %sB)\n",totalbytes,formated,totalprefix);
-	swrite(server_message, *sock);
+	ssend(*sock,"Sum: %lu bytes (%.2f %sB)\n",totalbytes,formated,totalprefix);
 	free(totalprefix);
 
 	if(debugclients)
@@ -899,7 +865,6 @@ void getMemoryUsage(int *sock)
 
 void getForwardDestinationsOverTime(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int i, sendit = -1;
 
 	for(i = 0; i < counters.overTime; i++)
@@ -918,7 +883,7 @@ void getForwardDestinationsOverTime(int *sock)
 			double percentage;
 
 			validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-			sprintf(server_message, "%i", overTime[i].timestamp);
+			ssend(*sock, "%i", overTime[i].timestamp);
 
 			int j, forwardedsum = 0;
 
@@ -972,7 +937,7 @@ void getForwardDestinationsOverTime(int *sock)
 					percentage = 0.0;
 				}
 
-				sprintf(server_message + strlen(server_message), " %.2f", percentage);
+				ssend(*sock, " %.2f", percentage);
 			}
 
 			// Avoid floating point exceptions
@@ -982,8 +947,7 @@ void getForwardDestinationsOverTime(int *sock)
 			else
 				percentage = 0.0;
 
-			sprintf(server_message + strlen(server_message), " %.2f\n", percentage);
-			swrite(server_message, *sock);
+			ssend(*sock, " %.2f\n", percentage);
 		}
 	}
 	if(debugclients)
@@ -992,10 +956,7 @@ void getForwardDestinationsOverTime(int *sock)
 
 void getClientID(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
-
-	sprintf(server_message,"%i\n", *sock);
-	swrite(server_message, *sock);
+	ssend(*sock,"%i\n", *sock);
 
 	if(debugclients)
 		logg("Sent client ID to client, ID: %i", *sock);
@@ -1003,7 +964,6 @@ void getClientID(int *sock)
 
 void getQueryTypesOverTime(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int i, sendit = -1;
 	for(i = 0; i < counters.overTime; i++)
 	{
@@ -1026,8 +986,7 @@ void getQueryTypesOverTime(int *sock)
 				percentageIPv4 = 1e2*overTime[i].querytypedata[0] / sum;
 				percentageIPv6 = 1e2*overTime[i].querytypedata[1] / sum;
 			}
-			sprintf(server_message, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
-			swrite(server_message, *sock);
+			ssend(*sock, "%i %.2f %.2f\n", overTime[i].timestamp, percentageIPv4, percentageIPv6);
 		}
 	}
 	if(debugclients)
@@ -1036,23 +995,19 @@ void getQueryTypesOverTime(int *sock)
 
 void getVersion(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
-
 	const char * commit = GIT_HASH;
 	const char * tag = GIT_TAG;
 	if(strlen(tag) > 1)
 	{
-		sprintf(server_message,"version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, tag, GIT_BRANCH, GIT_DATE);
+		ssend(*sock, "version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, tag, GIT_BRANCH, GIT_DATE);
 	}
 	else
 	{
 		char hash[8];
 		// Extract first 7 characters of the hash
 		strncpy(hash, commit, 7); hash[7] = 0;
-		sprintf(server_message,"version vDev-%s\ntag %s\nbranch %s\ndate %s\n", hash, tag, GIT_BRANCH, GIT_DATE);
+		ssend(*sock, "version vDev-%s\ntag %s\nbranch %s\ndate %s\n", hash, tag, GIT_BRANCH, GIT_DATE);
 	}
-
-	swrite(server_message, *sock);
 
 	if(debugclients)
 		logg("Sent version info to client, ID: %i", *sock);
@@ -1073,9 +1028,7 @@ void getDBstats(int *sock)
 	double formated = 0.0;
 	format_memory_size(prefix, filesize, &formated);
 
-	char server_message[SOCKETBUFFERLEN];
-	sprintf(server_message,"queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, sqlite3_libversion());
-	swrite(server_message, *sock);
+	ssend(*sock,"queries in database: %i\ndatabase filesize: %.2f %sB\nSQLite version: %s\n", get_number_of_queries_in_DB(), formated, prefix, sqlite3_libversion());
 
 	if(debugclients)
 		logg("Sent DB info to client, ID: %i", *sock);
@@ -1083,7 +1036,6 @@ void getDBstats(int *sock)
 
 void getClientsOverTime(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int i, sendit = -1;
 
 	for(i = 0; i < counters.overTime; i++)
@@ -1125,7 +1077,7 @@ void getClientsOverTime(int *sock)
 	for(i = sendit; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		sprintf(server_message, "%i", overTime[i].timestamp);
+		ssend(*sock, "%i", overTime[i].timestamp);
 
 		// Loop over forward destinations to generate output to be sent to the client
 		int j;
@@ -1143,11 +1095,10 @@ void getClientsOverTime(int *sock)
 				thisclient = overTime[i].clientdata[j];
 			}
 
-			sprintf(server_message + strlen(server_message), " %i", thisclient);
+			ssend(*sock, " %i", thisclient);
 		}
 
-		sprintf(server_message + strlen(server_message), "\n");
-		swrite(server_message, *sock);
+		ssend(*sock, "\n");
 	}
 
 	if(excludeclients != NULL)
@@ -1156,7 +1107,6 @@ void getClientsOverTime(int *sock)
 
 void getClientNames(int *sock)
 {
-	char server_message[SOCKETBUFFERLEN];
 	int i;
 
 	// Get clients which the user doesn't want to see
@@ -1186,8 +1136,7 @@ void getClientNames(int *sock)
 		if(insetupVarsArray(clients[i].ip) || insetupVarsArray(clients[i].name))
 			continue;
 
-		sprintf(server_message,"%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
-		swrite(server_message, *sock);
+		ssend(*sock, "%i %i %s %s\n", i, clients[i].count, clients[i].ip, clients[i].name);
 	}
 
 	if(excludeclients != NULL)
