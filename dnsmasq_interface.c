@@ -15,7 +15,7 @@
 
 void print_flags(unsigned int flags);
 void storeIP(int i, char *ip);
-void save_reply_type(unsigned int flags, int queryID);
+void save_reply_type(unsigned int flags, int queryID, struct timeval response);
 
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
@@ -354,7 +354,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 			}
 
 			// Save reply type and update individual reply counters
-			save_reply_type(flags, i);
+			save_reply_type(flags, i, response);
 
 			// Save returned IP
 			// but only if we have an exact match (there will be no exact match for a CNAME)
@@ -371,9 +371,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 
 			// Hereby, this query is now fully determined
 			queries[i].complete = true;
-
-			// Save response time (relative time)
-			queries[i].response = response.tv_sec*10000 + response.tv_usec/100 - queries[i].response;
 		}
 
 		// We are done here
@@ -410,7 +407,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 		{
 
 			// Save reply type and update individual reply counters
-			save_reply_type(flags, i);
+			save_reply_type(flags, i, response);
 
 			// Save returned IP
 			// but only if we have an exact match (there will be no exact match for a CNAME)
@@ -423,9 +420,6 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, unsigned
 
 			// Store TTL
 			queries[i].ttl = ttl;
-
-			// Save response time (relative time)
-			queries[i].response = response.tv_sec*10000 + response.tv_usec/100 - queries[i].response;
 		}
 	}
 	else if((flags & F_REVERSE) && debug)
@@ -550,7 +544,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			}
 
 			// Save reply type and update individual reply counters
-			save_reply_type(flags, i);
+			save_reply_type(flags, i, response);
 
 			// Save returned IP
 			// but only if we have an exact match (there will be no exact match for a CNAME)
@@ -567,9 +561,6 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 
 			// Hereby, this query is now fully determined
 			queries[i].complete = true;
-
-			// Save response time (relative time)
-			queries[i].response = response.tv_sec*10000 + response.tv_usec/100 - queries[i].response;
 		}
 	}
 	else if(debug)
@@ -667,7 +658,7 @@ void print_flags(unsigned int flags)
 	free(flagstr);
 }
 
-void save_reply_type(unsigned int flags, int queryID)
+void save_reply_type(unsigned int flags, int queryID, struct timeval response)
 {
 	// Iterate through possible values
 	validate_access("queries", queryID, false, __LINE__, __FUNCTION__, __FILE__);
@@ -701,6 +692,12 @@ void save_reply_type(unsigned int flags, int queryID)
 		domains[domainID].reply[replyID] = REPLY_IP;
 		counters.reply_IP++;
 	}
+
+	// Save response time (relative time)
+	if(queries[queryID].response > 1e8)
+		queries[queryID].response = response.tv_sec*10000 +
+		                            response.tv_usec/100  -
+		                            queries[queryID].response;
 }
 
 pthread_t telnet_listenthreadv4;
