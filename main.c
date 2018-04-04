@@ -38,7 +38,6 @@ int main (int argc, char* argv[])
 		logg("FATAL: Starting pihole-FTL directly is not recommended.");
 		logg("       Instead, use system commands for starting pihole-FTL as service (systemctl / service)");
 		logg("       or use: sudo -u pihole pihole-FTL");
-		exit(EXIT_FAILURE);
 	}
 
 	read_FTLconf();

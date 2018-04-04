@@ -18,7 +18,6 @@ bool debugclients = false;
 bool debugGC = false;
 bool runtest = false;
 bool debugDB = false;
-bool travis = false;
 int argc_dnsmasq = 0;
 char **argv_dnsmasq = NULL;
 
@@ -122,18 +121,6 @@ void parse_args(int argc, char* argv[])
 		   strcmp(argv[i], "no-daemon") == 0)
 		{
 			daemonmode = false;
-			ok = true;
-		}
-
-		// Use files in local places for Travis-CI tests
-		if(strcmp(argv[i], "travis-ci") == 0)
-		{
-			travis = true;
-			FTLfiles.log = "pihole-FTL.log";
-			// FTLfiles.db will be set to "pihole-FTL.db" via config file on Travis
-			FTLfiles.conf = "pihole-FTL.conf";
-			FTLfiles.socketfile = "pihole-FTL.sock";
-			files.log = "pihole.log";
 			ok = true;
 		}
 

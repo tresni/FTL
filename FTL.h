@@ -252,7 +252,6 @@ extern bool needGC;
 extern bool daemonmode;
 extern bool database;
 extern long int lastdbindex;
-extern bool travis;
 extern bool DBdeleteoldqueries;
 extern bool rereadgravity;
 extern long int lastDBimportedtimestamp;
