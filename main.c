@@ -21,8 +21,10 @@ int main (int argc, char* argv[])
 {
 	username = getUserName();
 
-	if(argc > 1)
-		parse_args(argc, argv);
+	// Parse arguments
+	// We run this also for no direct arguments
+	// to have arg{c,v}_dnsmasq initialized
+	parse_args(argc, argv);
 
 	// Try to open FTL log
 	open_FTL_log(true);
@@ -58,7 +60,7 @@ int main (int argc, char* argv[])
 	log_counter_info();
 	check_setupVarsconf();
 
-	// Actually start the resolver in here
+	// Preparations done - start the resolver
 	main_dnsmasq(argc_dnsmasq, argv_dnsmasq);
 
 	logg("Shutting down...");
@@ -78,6 +80,9 @@ int main (int argc, char* argv[])
 	// Close sockets
 	close_telnet_socket();
 	close_unix_socket();
+
+	if(config.blockingregex)
+		free_regex();
 
 	//Remove PID file
 	removepid();
