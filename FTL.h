@@ -169,6 +169,7 @@ typedef struct {
 typedef struct {
 	unsigned char magic;
 	int count;
+	int blockedcount;
 	char *ip;
 	char *name;
 	bool new;
@@ -240,10 +241,6 @@ extern int setupVarsElements;
 
 extern bool initialscan;
 extern bool debug;
-extern bool debugthreads;
-extern bool debugclients;
-extern bool debugGC;
-extern bool debugDB;
 extern bool threadwritelock;
 extern bool threadreadlock;
 extern unsigned char blockingstatus;
@@ -251,7 +248,6 @@ extern unsigned char blockingstatus;
 extern char ** wildcarddomains;
 
 extern memoryStruct memory;
-extern bool runtest;
 
 extern char * username;
 extern char timestamp[16];

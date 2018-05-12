@@ -32,7 +32,8 @@ int findOverTimeID(int overTimetimestamp)
 	int timeidx = -1, i;
 	// Check struct size
 	memory_check(OVERTIME);
-	validate_access("overTime", counters.overTime-1, true, __LINE__, __FUNCTION__, __FILE__);
+	if(counters.overTime > 0)
+		validate_access("overTime", counters.overTime-1, true, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.overTime; i++)
 	{
 		if(overTime[i].timestamp == overTimetimestamp)
@@ -83,7 +84,8 @@ int findOverTimeID(int overTimetimestamp)
 int findForwardID(const char * forward, bool count)
 {
 	int i, forwardID = -1;
-	validate_access("forwarded", counters.forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
+	if(counters.forwarded > 0)
+		validate_access("forwarded", counters.forwarded-1, true, __LINE__, __FUNCTION__, __FILE__);
 	// Go through already knows forward servers and see if we used one of those
 	for(i=0; i < counters.forwarded; i++)
 	{
@@ -129,7 +131,8 @@ int findForwardID(const char * forward, bool count)
 int findDomainID(const char *domain)
 {
 	int i;
-	validate_access("domains", counters.domains-1, true, __LINE__, __FUNCTION__, __FILE__);
+	if(counters.domains > 0)
+		validate_access("domains", counters.domains-1, true, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.domains; i++)
 	{
 		// Quick test: Does the domain start with the same character?
@@ -175,7 +178,8 @@ int findClientID(const char *client)
 {
 	int i;
 	// Compare content of client against known client IP addresses
-	validate_access("clients", counters.clients-1, true, __LINE__, __FUNCTION__, __FILE__);
+	if(counters.clients > 0)
+		validate_access("clients", counters.clients-1, true, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.clients; i++)
 	{
 		// Quick test: Does the clients IP start with the same character?
@@ -202,6 +206,8 @@ int findClientID(const char *client)
 	clients[clientID].magic = MAGICBYTE;
 	// Set its counter to 1
 	clients[clientID].count = 1;
+	// Initialize blocked count to zero
+	clients[clientID].blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
 	clients[clientID].ip = strdup(client);
 	memory.clientips += (strlen(client) + 1) * sizeof(char);
@@ -235,15 +241,18 @@ int detectStatus(const char *domain)
 	// Note that this is a really expensive subroutine and trying to match
 	// blocked domains against all configured wildcards will take some time
 	int i;
+
+	// Return early if no wildcard domains are defined
+	if(counters.wildcarddomains < 1)
+		return QUERY_CACHE;
+
 	validate_access("wildcarddomains", counters.wildcarddomains-1, false, __LINE__, __FUNCTION__, __FILE__);
 	for(i=0; i < counters.wildcarddomains; i++)
 	{
 		if(strcasecmp(wildcarddomains[i], domain) == 0)
 		{
 			// Exact match with wildcard domain
-			// if(debug)
-			// 	printf("%s / %s (exact wildcard match)\n",wildcarddomains[i], domain);
-			return 4;
+			return QUERY_WILDCARD;
 		}
 		// Create copy of domain under investigation
 		char * part = strdup(domain);
@@ -268,13 +277,11 @@ int detectStatus(const char *domain)
 			// Test for a match
 			if(strcasecmp(wildcarddomains[i], partbuffer) == 0)
 			{
-				// Free allocated memory before return'ing
+				// Free allocated memory before returning
 				free(part);
 				free(partbuffer);
 				// Return match with wildcard domain
-				// if(debug)
-				// 	printf("%s / %s (wildcard match)\n",wildcarddomains[i], partbuffer);
-				return 4;
+				return QUERY_WILDCARD;
 			}
 			if(strlen(partbuffer) > 0)
 			{
@@ -293,5 +300,5 @@ int detectStatus(const char *domain)
 	// wildcard blocking, but from e.g. an
 	// address=// configuration
 	// Answer as "cached"
-	return 3;
+	return QUERY_CACHE;
 }

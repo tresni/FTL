@@ -20,7 +20,7 @@ static void block_single_domain(char *domain);
 
 char flagnames[28][12] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD ", "F_DHCP ", "F_NEG ", "F_HOSTS ", "F_IPV4 ", "F_IPV6 ", "F_BIGNAME ", "F_NXDOMAIN ", "F_CNAME ", "F_DNSKEY ", "F_CONFIG ", "F_DS ", "F_DNSSECOK ", "F_UPSTREAM ", "F_RRNAME ", "F_SERVER ", "F_QUERY ", "F_NOERR ", "F_AUTH ", "F_DNSSEC ", "F_KEYTAG ", "F_SECSTAT ", "F_NO_RR ", "F_IPSET ", "F_NOEXTRA "};
 
-void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id)
+void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *types, int id, char type)
 {
 	// Create new query in data structure
 	enable_thread_lock();
@@ -91,7 +91,8 @@ void FTL_new_query(unsigned int flags, char *name, struct all_addr *addr, char *
 	}
 
 	// Log new query if in debug mode
-	if(debug) logg("**** new query %s %s %s (ID %i)", types, domain, client, id);
+	char *proto = (type == UDP) ? "UDP" : "TCP";
+	if(debug) logg("**** new %s %s \"%s\" from %s (ID %i)", proto, types, domain, client, id);
 
 	// Determine query type
 	unsigned char querytype = 0;
@@ -413,6 +414,9 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 			int domainID = queries[i].domainID;
 			validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 
+			int clientID = queries[i].clientID;
+			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
 			// Decide what to do depening on the result of detectStatus()
 			if(queries[i].status == QUERY_WILDCARD)
 			{
@@ -421,6 +425,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
 				domains[domainID].wildcard = true;
+				clients[clientID].blockedcount++;
 			}
 			else if(queries[i].status == QUERY_CACHE)
 			{
@@ -434,6 +439,7 @@ void FTL_reply(unsigned short flags, char *name, struct all_addr *addr, int id)
 				counters.blocked++;
 				overTime[timeidx].blocked++;
 				domains[domainID].blockedcount++;
+				clients[clientID].blockedcount++;
 			}
 
 			// Save reply type and update individual reply counters
@@ -579,8 +585,6 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			return;
 		}
 
-		int domainID = queries[i].domainID;
-		validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
 		if(!queries[i].complete)
 		{
 			// This query is no longer unknown
@@ -592,6 +596,12 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 			int timeidx = findOverTimeID(overTimetimestamp);
 			validate_access("overTime", timeidx, true, __LINE__, __FUNCTION__, __FILE__);
 
+			int domainID = queries[i].domainID;
+			validate_access("domains", domainID, true, __LINE__, __FUNCTION__, __FILE__);
+
+			int clientID = queries[i].clientID;
+			validate_access("clients", clientID, true, __LINE__, __FUNCTION__, __FILE__);
+
 			// Handle counters accordingly
 			switch(requesttype)
 			{
@@ -600,6 +610,7 @@ void FTL_cache(unsigned int flags, char *name, struct all_addr *addr, char *arg,
 					counters.blocked++;
 					overTime[timeidx].blocked++;
 					domains[domainID].blockedcount++;
+					clients[clientID].blockedcount++;
 					break;
 				case QUERY_CACHE: // cached from one of the lists
 					counters.cached++;
@@ -865,7 +876,6 @@ int FTL_listsfile(char* filename, unsigned int index, FILE *f, int cache_size, s
 		// Strip off everything at the end of the IP (CIDR might be there)
 		a=IPv6addr; for(;*a;a++) if(*a == '/') *a = 0;
 		// Prepare IPv6 address for records
-		logg("IPv6: \"%s\" \"%s\"",IPv6addr,a);
 		if(inet_pton(AF_INET6, IPv6addr, &addr6) > 0)
 			has_IPv6 = true;
 	}
