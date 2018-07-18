@@ -117,6 +117,9 @@ HAVE_AUTH
 HAVE_DNSSEC
    include DNSSEC validator.
 
+HAVE_DUMPFILE
+   include code to dump packets to a libpcap-format file for debugging.
+
 HAVE_LOOP
    include functionality to probe for and remove DNS forwarding loops.
 
@@ -164,6 +167,7 @@ RESOLVFILE
 #define HAVE_AUTH
 #define HAVE_IPSET
 #define HAVE_LOOP
+#define HAVE_DUMPFILE
 
 /* Build options which require external libraries.
 
@@ -363,6 +367,10 @@ HAVE_SOCKADDR_SA_LEN
 #undef HAVE_LOOP
 #endif
 
+#ifdef NO_DUMPFILE
+#undef HAVE_DUMPFILE
+#endif
+
 #if defined (HAVE_LINUX_NETWORK) && !defined(NO_INOTIFY)
 #define HAVE_INOTIFY
 #endif
@@ -451,8 +459,11 @@ static char *compile_opts =
 #ifndef HAVE_INOTIFY
 "no-"
 #endif
-"inotify";
-
+"inotify "
+#ifndef HAVE_DUMPFILE
+"no-"
+#endif
+"dumpfile";
 
 #endif
 

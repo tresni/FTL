@@ -927,7 +927,6 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
   return F_QUERY;
 }
 
-
 size_t setup_reply(struct dns_header *header, size_t qlen,
 		struct all_addr *addrp, unsigned int flags, unsigned long ttl)
 {
@@ -949,7 +948,12 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
   else if (flags == F_NXDOMAIN)
     SET_RCODE(header, NXDOMAIN);
   else if (flags == F_SERVFAIL)
-    SET_RCODE(header, SERVFAIL);
+    {
+      struct all_addr a;
+      a.addr.rcode.rcode = SERVFAIL;
+      log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
+      SET_RCODE(header, SERVFAIL);
+    }
   else if (flags == F_IPV4)
     { /* we know the address */
       SET_RCODE(header, NOERROR);
@@ -967,7 +971,12 @@ size_t setup_reply(struct dns_header *header, size_t qlen,
     }
 #endif
   else /* nowhere to forward to */
-    SET_RCODE(header, REFUSED);
+    {
+      struct all_addr a;
+      a.addr.rcode.rcode = REFUSED;
+      log_query(F_CONFIG | F_RCODE, "error", &a, NULL);
+      SET_RCODE(header, REFUSED);
+    }
 
   return p - (unsigned char *)header;
 }
@@ -1655,7 +1664,9 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    }
 
 		  /* If the client asked for DNSSEC  don't use cached data. */
-		  if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) || !do_bit || !(crecp->flags & F_DNSSECOK))
+		  if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) ||
+		      !do_bit ||
+		      (option_bool(OPT_DNSSEC_VALID) && !(crecp->flags & F_DNSSECOK)))
 		    do
 		      {
 			/* don't answer wildcard queries with data not from /etc/hosts
@@ -1746,7 +1757,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	    {
 	      if ((crecp = cache_find_by_name(NULL, name, now, F_CNAME | (dryrun ? F_NO_RR : 0))) &&
 		  (qtype == T_CNAME || (crecp->flags & F_CONFIG)) &&
-		  ((crecp->flags & F_CONFIG) || !do_bit || !(crecp->flags & F_DNSSECOK)))
+		  ((crecp->flags & F_CONFIG) || !do_bit || (option_bool(OPT_DNSSEC_VALID) && !(crecp->flags & F_DNSSECOK))))
 		{
 		  if (!(crecp->flags & F_DNSSECOK))
 		    sec_data = 0;

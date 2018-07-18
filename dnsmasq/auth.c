@@ -435,9 +435,10 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	      for (peers = daemon->auth_peers; peers; peers = peers->next)
 		if (sockaddr_isequal(peer_addr, &peers->addr))
 		  break;
-	      
-	      /* Refuse all AXFR unless --auth-sec-servers is set */
-	      if ((!peers && daemon->auth_peers) || !daemon->secondary_forward_server)
+
+	      /* Refuse all AXFR unless --auth-sec-servers or auth-peers is set */
+	      if ((!daemon->secondary_forward_server && !daemon->auth_peers) ||
+		  (daemon->auth_peers && !peers))
 		{
 		  if (peer_addr->sa.sa_family == AF_INET)
 		    inet_ntop(AF_INET, &peer_addr->in.sin_addr, daemon->addrbuff, ADDRSTRLEN);
