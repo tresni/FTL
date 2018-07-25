@@ -25,16 +25,15 @@ logFileNamesStruct files = {
 	"/etc/pihole/whitelist.txt",
 	"/etc/pihole/black.list",
 	"/etc/pihole/gravity.list",
+	"/etc/pihole/regex.list",
 	"/etc/pihole/setupVars.conf",
-	"/etc/dnsmasq.d/03-pihole-wildcard.conf",
 	"/etc/pihole/auditlog.list",
-	"/etc/dnsmasq.d/01-pihole.conf"
+	"/etc/dnsmasq.d/01-pihole.conf",
 };
 
 // Fixed size structs
 countersStruct counters = { 0 };
 ConfigStruct config;
-memoryStruct memory;
 
 // Variable size array structs
 queriesDataStruct *queries;
@@ -117,20 +116,6 @@ void memory_check(int which)
 				}
 			}
 		break;
-		case WILDCARD:
-			if(counters.wildcarddomains >= counters.wildcarddomains_MAX)
-			{
-				// Enlarge wildcarddomains pointer array
-				counters.wildcarddomains_MAX += WILDCARDALLOCSTEP;
-				logg_struct_resize("wildcards", counters.wildcarddomains_MAX, WILDCARDALLOCSTEP);
-				wildcarddomains = realloc(wildcarddomains, counters.wildcarddomains_MAX*sizeof(*wildcarddomains));
-				if(wildcarddomains == NULL)
-				{
-					logg("FATAL: Memory allocation failed! Exiting");
-					exit(EXIT_FAILURE);
-				}
-			}
-		break;
 		default:
 			/* That cannot happen */
 			logg("Fatal error in memory_check(%i)", which);
@@ -147,7 +132,6 @@ void validate_access(const char * name, int pos, bool testmagic, int line, const
 	else if(name[0] == 'q') limit = counters.queries_MAX;
 	else if(name[0] == 'o') limit = counters.overTime_MAX;
 	else if(name[0] == 'f') limit = counters.forwarded_MAX;
-	else if(name[0] == 'w') limit = counters.wildcarddomains;
 	else { logg("Validator error (range)"); killed = 1; }
 
 	if(pos >= limit || pos < 0)
@@ -192,7 +176,6 @@ void validate_access_oTcl(int timeidx, int clientID, int line, const char * func
 		for(i = overTime[timeidx].clientnum; i <= clientID; i++)
 		{
 			overTime[timeidx].clientdata[i] = 0;
-			memory.clientdata++;
 		}
 		// Update counter
 		overTime[timeidx].clientnum = clientID + 1;

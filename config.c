@@ -198,22 +198,26 @@ void read_FTLconf(void)
 		case MODE_NULL:
 			logg("   BLOCKINGMODE: Null IPs for blocked domains");
 			break;
-		default:
+		case MODE_IP_NODATA_AAAA:
+			logg("   BLOCKINGMODE: Pi-hole's IP + NODATA-IPv6 for blocked domains");
+			break;
+		case MODE_IP:
 			logg("   BLOCKINGMODE: Pi-hole's IPs for blocked domains");
 			break;
 	}
 
-	// BLOCKINGREGEX
-	// defaults to: (not set)
-	buffer = parse_FTLconf(fp, "BLOCKINGREGEX");
-	config.blockingregex = false;
-	if(buffer != NULL && strlen(buffer) > 0 && init_regex(buffer,0))
-		config.blockingregex = true;
+	// REGEX_DEBUGMODE
+	// defaults to: No
+	config.regex_debugmode = false;
+	buffer = parse_FTLconf(fp, "REGEX_DEBUGMODE");
 
-	if(config.blockingregex)
-		logg("   BLOCKINGREGEX: Using configured regex");
+	if(buffer != NULL && strcasecmp(buffer, "true") == 0)
+		config.regex_debugmode = true;
+
+	if(config.regex_debugmode)
+		logg("   REGEX_DEBUGMODE: Active. May increase log file size!");
 	else
-		logg("   BLOCKINGREGEX: Not set");
+		logg("   REGEX_DEBUGMODE: Inactive");
 
 	logg("Finished config file parsing");
 
@@ -317,7 +321,7 @@ void get_privacy_level(FILE *fp)
 void get_blocking_mode(FILE *fp)
 {
 	// Set default value
-	config.blockingmode = MODE_IP;
+	config.blockingmode = MODE_NULL;
 
 	// See if we got a file handle, if not we have to open
 	// the config file ourselves
@@ -338,6 +342,10 @@ void get_blocking_mode(FILE *fp)
 			config.blockingmode = MODE_NX;
 		else if(strcasecmp(buffer, "NULL") == 0)
 			config.blockingmode = MODE_NULL;
+		else if(strcasecmp(buffer, "IP-NODATA-AAAA") == 0)
+			config.blockingmode = MODE_IP_NODATA_AAAA;
+		else if(strcasecmp(buffer, "IP") == 0)
+			config.blockingmode = MODE_IP;
 	}
 
 	// Release memory

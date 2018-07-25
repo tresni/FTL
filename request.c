@@ -67,11 +67,6 @@ void process_request(char *client_message, int *sock)
 		processed = true;
 		getRecentBlocked(client_message, sock);
 	}
-	else if(command(client_message, ">memory"))
-	{
-		processed = true;
-		getMemoryUsage(sock);
-	}
 	else if(command(client_message, ">clientID"))
 	{
 		processed = true;
@@ -116,6 +111,23 @@ void process_request(char *client_message, int *sock)
 	{
 		processed = true;
 		getCacheInformation(sock);
+	}
+	else if(command(client_message, ">reresolve"))
+	{
+		processed = true;
+		logg("Received API request to re-resolve host names");
+		// Need to release the thread lock already here to allow
+		// the resolver to process the incoming PTR requests
+		disable_thread_lock();
+		reresolveHostnames();
+		logg("Done re-resolving host names");
+	}
+	else if(command(client_message, ">recompile-regex"))
+	{
+		processed = true;
+		logg("Received API request to recompile regex");
+		free_regex();
+		read_regex_from_file();
 	}
 
 	// Test only at the end if we want to quit or kill

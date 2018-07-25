@@ -68,7 +68,6 @@ int findOverTimeID(int overTimetimestamp)
 		// overTime[timeidx].querytypedata is static
 		overTime[timeidx].clientnum = 0;
 		overTime[timeidx].clientdata = NULL;
-		memory.querytypedata += (TYPE_MAX-1)*sizeof(int);
 		counters.overTime++;
 
 		// Update time stamp for next loop interation
@@ -114,7 +113,6 @@ int findForwardID(const char * forward, bool count)
 		forwarded[forwardID].count = 0;
 	// Save forward destination IP address
 	forwarded[forwardID].ip = strdup(forward);
-	memory.forwardedips += (strlen(forward) + 1) * sizeof(char);
 	forwarded[forwardID].failed = 0;
 	// Initialize forward hostname
 	// Due to the nature of us being the resolver,
@@ -161,11 +159,8 @@ int findDomainID(const char *domain)
 	domains[domainID].count = 1;
 	// Set blocked counter to zero
 	domains[domainID].blockedcount = 0;
-	// Initialize wildcard blocking flag with false
-	domains[domainID].wildcard = false;
 	// Store domain name - no need to check for NULL here as it doesn't harm
 	domains[domainID].domain = strdup(domain);
-	memory.domainnames += (strlen(domain) + 1) * sizeof(char);
 	// RegEx needs to be evaluated for this new domain
 	domains[domainID].regexmatch = REGEX_UNKNOWN;
 	// Increase counter by one
@@ -210,7 +205,6 @@ int findClientID(const char *client)
 	clients[clientID].blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
 	clients[clientID].ip = strdup(client);
-	memory.clientips += (strlen(client) + 1) * sizeof(char);
 	// Initialize client hostname
 	// Due to the nature of us being the resolver,
 	// the actual resolving of the host name has
@@ -233,72 +227,4 @@ bool isValidIPv6(const char *addr)
 {
 	struct sockaddr_in6 sa;
 	return inet_pton(AF_INET6, addr, &(sa.sin6_addr)) != 0;
-}
-
-int detectStatus(const char *domain)
-{
-	// Try to find the domain in the array of wildcard blocked domains
-	// Note that this is a really expensive subroutine and trying to match
-	// blocked domains against all configured wildcards will take some time
-	int i;
-
-	// Return early if no wildcard domains are defined
-	if(counters.wildcarddomains < 1)
-		return QUERY_CACHE;
-
-	validate_access("wildcarddomains", counters.wildcarddomains-1, false, __LINE__, __FUNCTION__, __FILE__);
-	for(i=0; i < counters.wildcarddomains; i++)
-	{
-		if(strcasecmp(wildcarddomains[i], domain) == 0)
-		{
-			// Exact match with wildcard domain
-			return QUERY_WILDCARD;
-		}
-		// Create copy of domain under investigation
-		char * part = strdup(domain);
-		if(part == NULL)
-		{
-			// String duplication / memory allocation failed
-			logg("Notice: Memory allocation for part in detectStatus failed, domain: \"%s\"", domain);
-			continue;
-		}
-		char * partbuffer = calloc(strlen(part)+1, sizeof(char));
-		if(partbuffer == NULL)
-		{
-			// Memory allocation failed
-			logg("Notice: Memory allocation for partbuffer in detectStatus failed, domain: \"%s\"", domain);
-			continue;
-		}
-
-		// Strip subdomains one after another and
-		// compare to existing wildcard entries
-		while(sscanf(part,"%*[^.].%s", partbuffer) > 0)
-		{
-			// Test for a match
-			if(strcasecmp(wildcarddomains[i], partbuffer) == 0)
-			{
-				// Free allocated memory before returning
-				free(part);
-				free(partbuffer);
-				// Return match with wildcard domain
-				return QUERY_WILDCARD;
-			}
-			if(strlen(partbuffer) > 0)
-			{
-				// Empty part
-				*part = '\0';
-				// Replace with partbuffer
-				strcat(part, partbuffer);
-			}
-		}
-		// Free allocated memory
-		free(part);
-		free(partbuffer);
-	}
-
-	// If not found -> this answer is not from
-	// wildcard blocking, but from e.g. an
-	// address=// configuration
-	// Answer as "cached"
-	return QUERY_CACHE;
 }

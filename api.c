@@ -44,7 +44,7 @@ int cmpdesc(const void *a, const void *b)
 
 void getStats(int *sock)
 {
-	int blocked = counters.blocked + counters.wildcardblocked;
+	int blocked = counters.blocked;
 	int total = counters.queries;
 	float percentage = 0.0f;
 
@@ -75,6 +75,18 @@ void getStats(int *sock)
 		      counters.domains, counters.forwardedqueries, counters.cached);
 		ssend(*sock, "clients_ever_seen %i\n", counters.clients);
 		ssend(*sock, "unique_clients %i\n", activeclients);
+
+		// Sum up all query types (A, AAAA, ANY, SRV, SOA, ...)
+		int sumalltypes = 0;
+		for(i=0; i < TYPE_MAX-1; i++)
+		{
+			sumalltypes += counters.querytype[i];
+		}
+		ssend(*sock, "dns_queries_all_types %i\n", sumalltypes);
+
+		// Send individual reply type counters
+		ssend(*sock, "reply_NODATA %i\nreply_NXDOMAIN %i\nreply_CNAME %i\nreply_IP %i\n",
+		      counters.reply_NODATA, counters.reply_NXDOMAIN, counters.reply_CNAME, counters.reply_IP);
 	}
 	else
 	{
@@ -99,18 +111,25 @@ void getStats(int *sock)
 void getOverTime(int *sock)
 {
 	int i, j = 9999999;
+	bool found = false;
+	time_t mintime = time(NULL) - config.maxlogage;
 
 	// Start with the first non-empty overTime slot
 	for(i=0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
 		if((overTime[i].total > 0 || overTime[i].blocked > 0) &&
-		   overTime[i].timestamp)
+		   overTime[i].timestamp >= mintime)
 		{
 			j = i;
+			found = true;
 			break;
 		}
 	}
+
+	// Check if there is any data to be sent
+	if(!found)
+		return;
 
 	if(istelnet[*sock])
 	{
@@ -149,8 +168,13 @@ void getTopDomains(char *client_message, int *sock)
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS)
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS) {
+		// Always send the total number of domains, but pretend it's 0
+		if(!istelnet[*sock])
+			pack_int32(*sock, 0);
+
 		return;
+	}
 
 	// Match both top-domains and top-ads
 	// example: >top-domains (15)
@@ -245,7 +269,7 @@ void getTopDomains(char *client_message, int *sock)
 
 		if(blocked && showblocked && domains[j].blockedcount > 0)
 		{
-			if(audit && domains[j].wildcard)
+			if(audit && domains[j].regexmatch == REGEX_BLOCKED)
 			{
 				if(istelnet[*sock])
 					ssend(*sock, "%i %i %s wildcard\n", n, domains[j].blockedcount, domains[j].domain);
@@ -303,8 +327,13 @@ void getTopClients(char *client_message, int *sock)
 
 	// Exit before processing any data if requested via config setting
 	get_privacy_level(NULL);
-	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS)
+	if(config.privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS) {
+		// Always send the total number of clients, but pretend it's 0
+		if(!istelnet[*sock])
+			pack_int32(*sock, 0);
+
 		return;
+	}
 
 	// Match both top-domains and top-ads
 	// example: >top-clients (15)
@@ -510,10 +539,10 @@ void getForwardDestinations(char *client_message, int *sock)
 				ssend(*sock, "%i %.2f %s %s\n", i, percentage, ip, name);
 			else
 			{
-				if(!pack_str32(*sock, "") || !pack_str32(*sock, ip))
+				if(!pack_str32(*sock, name) || !pack_str32(*sock, ip))
 					return;
 
-				pack_float(*sock, (float) percentage);
+				pack_float(*sock, percentage);
 			}
 		}
 	}
@@ -533,13 +562,26 @@ void getQueryTypes(int *sock)
 		for(i=0; i < TYPE_MAX-1; i++)
 			percentage[i] = 1e2f*counters.querytype[i]/total;
 
-	if(istelnet[*sock])
-		ssend(*sock,"A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
+	if(istelnet[*sock]) {
+		ssend(*sock, "A (IPv4): %.2f\nAAAA (IPv6): %.2f\nANY: %.2f\nSRV: %.2f\nSOA: %.2f\nPTR: %.2f\nTXT: %.2f\n",
 		      percentage[0], percentage[1], percentage[2], percentage[3],
 		      percentage[4], percentage[5], percentage[6]);
+	}
 	else {
+		pack_str32(*sock, "A (IPv4)");
 		pack_float(*sock, percentage[0]);
+		pack_str32(*sock, "AAAA (IPv6)");
 		pack_float(*sock, percentage[1]);
+		pack_str32(*sock, "ANY");
+		pack_float(*sock, percentage[2]);
+		pack_str32(*sock, "SRV");
+		pack_float(*sock, percentage[3]);
+		pack_str32(*sock, "SOA");
+		pack_float(*sock, percentage[4]);
+		pack_str32(*sock, "PTR");
+		pack_float(*sock, percentage[5]);
+		pack_str32(*sock, "TXT");
+		pack_float(*sock, percentage[6]);
 	}
 }
 
@@ -708,8 +750,7 @@ void getRecentBlocked(char *client_message, int *sock)
 			num = 0;
 	}
 
-	// Find most recent query with either status 1 (blocked)
-	// or status 4 (wildcard blocked)
+	// Find most recently blocked query
 	int found = 0;
 	for(i = counters.queries - 1; i > 0 ; i--)
 	{
@@ -732,43 +773,6 @@ void getRecentBlocked(char *client_message, int *sock)
 	}
 }
 
-void getMemoryUsage(int *sock)
-{
-	unsigned long int structbytes = sizeof(countersStruct) + sizeof(ConfigStruct) + counters.queries_MAX*sizeof(queriesDataStruct) + counters.forwarded_MAX*sizeof(forwardedDataStruct) + counters.clients_MAX*sizeof(clientsDataStruct) + counters.domains_MAX*sizeof(domainsDataStruct) + counters.overTime_MAX*sizeof(overTimeDataStruct) + (counters.wildcarddomains)*sizeof(*wildcarddomains);
-	char *structprefix = calloc(2, sizeof(char));
-	if(structprefix == NULL) return;
-	double formated = 0.0;
-	format_memory_size(structprefix, structbytes, &formated);
-
-	if(istelnet[*sock])
-		ssend(*sock,"memory allocated for internal data structure: %lu bytes (%.2f %sB)\n",structbytes,formated,structprefix);
-	else
-		pack_uint64(*sock, structbytes);
-	free(structprefix);
-
-	unsigned long int dynamicbytes = memory.wildcarddomains + memory.domainnames + memory.clientips + memory.forwardedips + memory.forwarddata;
-	char *dynamicprefix = calloc(2, sizeof(char));
-	if(dynamicprefix == NULL) return;
-	format_memory_size(dynamicprefix, dynamicbytes, &formated);
-
-	if(istelnet[*sock])
-		ssend(*sock,"dynamically allocated allocated memory used for strings: %lu bytes (%.2f %sB)\n",dynamicbytes,formated,dynamicprefix);
-	else
-		pack_uint64(*sock, dynamicbytes);
-	free(dynamicprefix);
-
-	unsigned long int totalbytes = structbytes + dynamicbytes;
-	char *totalprefix = calloc(2, sizeof(char));
-	if(totalprefix == NULL) return;
-	format_memory_size(totalprefix, totalbytes, &formated);
-
-	if(istelnet[*sock])
-		ssend(*sock,"Sum: %lu bytes (%.2f %sB)\n",totalbytes,formated,totalprefix);
-	else
-		pack_uint64(*sock, totalbytes);
-	free(totalprefix);
-}
-
 void getClientID(int *sock)
 {
 	if(istelnet[*sock])
@@ -780,10 +784,11 @@ void getClientID(int *sock)
 void getQueryTypesOverTime(int *sock)
 {
 	int i, sendit = -1;
+	time_t mintime = time(NULL) - config.maxlogage;
 	for(i = 0; i < counters.overTime; i++)
 	{
 		validate_access("overTime", i, true, __LINE__, __FUNCTION__, __FILE__);
-		if((overTime[i].total > 0 || overTime[i].blocked > 0))
+		if((overTime[i].total > 0 || overTime[i].blocked > 0) && overTime[i].timestamp >= mintime)
 		{
 			sendit = i;
 			break;
@@ -820,24 +825,33 @@ void getVersion(int *sock)
 	const char * commit = GIT_HASH;
 	const char * tag = GIT_TAG;
 
+	// Extract first 7 characters of the hash
+	char hash[8];
+	strncpy(hash, commit, 7); hash[7] = 0;
+
 	if(strlen(tag) > 1) {
 		if(istelnet[*sock])
-			ssend(*sock, "version %s\ntag %s\nbranch %s\ndate %s\n", GIT_VERSION, tag, GIT_BRANCH, GIT_DATE);
+			ssend(
+					*sock,
+					"version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
+					GIT_VERSION, tag, GIT_BRANCH, hash, GIT_DATE
+			);
 		else {
 			if(!pack_str32(*sock, GIT_VERSION) ||
 					!pack_str32(*sock, (char *) tag) ||
 					!pack_str32(*sock, GIT_BRANCH) ||
+					!pack_str32(*sock, hash) ||
 					!pack_str32(*sock, GIT_DATE))
 				return;
 		}
 	}
 	else {
-		char hash[8];
-		// Extract first 7 characters of the hash
-		strncpy(hash, commit, 7); hash[7] = 0;
-
 		if(istelnet[*sock])
-			ssend(*sock, "version vDev-%s\ntag %s\nbranch %s\ndate %s\n", hash, tag, GIT_BRANCH, GIT_DATE);
+			ssend(
+					*sock,
+					"version vDev-%s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
+					hash, tag, GIT_BRANCH, hash, GIT_DATE
+			);
 		else {
 			char *hashVersion = calloc(6 + strlen(hash), sizeof(char));
 			if(hashVersion == NULL) return;
@@ -846,6 +860,7 @@ void getVersion(int *sock)
 			if(!pack_str32(*sock, hashVersion) ||
 					!pack_str32(*sock, (char *) tag) ||
 					!pack_str32(*sock, GIT_BRANCH) ||
+					!pack_str32(*sock, hash) ||
 					!pack_str32(*sock, GIT_DATE))
 				return;
 
@@ -1005,19 +1020,13 @@ void getClientNames(int *sock)
 		if(skipclient[i])
 			continue;
 
-		char *client;
-		if(clients[i].name != NULL && strlen(clients[i].name) > 0)
-			client = clients[i].name;
-		else
-			client = clients[i].ip;
+		char *client_name = clients[i].name != NULL ? clients[i].name : "";
 
 		if(istelnet[*sock])
-			ssend(*sock, "%i %i %s\n", i, clients[i].count, client);
+			ssend(*sock, "%s %s\n", client_name, clients[i].ip);
 		else {
-			if(!pack_str32(*sock, "") || !pack_str32(*sock, clients[i].ip))
-				return;
-
-			pack_int32(*sock, clients[i].count);
+			pack_str32(*sock, client_name);
+			pack_str32(*sock, clients[i].ip);
 		}
 	}
 
@@ -1093,7 +1102,14 @@ void getDomainDetails(char *client_message, int *sock)
 			ssend(*sock,"Domain \"%s\", ID: %i\n", domain, i);
 			ssend(*sock,"Total: %i\n", domains[i].count);
 			ssend(*sock,"Blocked: %i\n", domains[i].blockedcount);
-			ssend(*sock,"Wildcard blocked: %s\n", domains[i].wildcard ? "true" : "false");
+			char *regexstatus;
+			if(domains[i].regexmatch == REGEX_BLOCKED)
+				regexstatus = "blocked";
+			if(domains[i].regexmatch == REGEX_NOTBLOCKED)
+				regexstatus = "not blocked";
+			else
+				regexstatus = "unknown";
+			ssend(*sock,"Regex status: %s\n", regexstatus);
 			return;
 		}
 	}

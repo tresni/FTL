@@ -46,6 +46,9 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
+// Define MIN and MAX macros, use them only when x and y are of the same type
+#define MAX(x,y) (((x) > (y)) ? (x) : (y))
+// MIN(x,y) is already defined in dnsmasq.h
 
 #include "routines.h"
 
@@ -72,6 +75,21 @@
 // How many client connection do we accept at once?
 #define MAXCONNS 255
 
+// Over how many queries do we iterate at most when trying to find a match?
+#define MAXITER 1000
+
+// FTLDNS enums
+enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER };
+enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
+enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
+enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_WILDCARD, QUERY_BLACKLIST };
+enum { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_MAX };
+enum { REPLY_UNKNOWN, REPLY_NODATA, REPLY_NXDOMAIN, REPLY_CNAME, REPLY_IP };
+enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS, PRIVACY_MAXIMUM };
+enum { MODE_IP, MODE_NX, MODE_NULL, MODE_IP_NODATA_AAAA };
+enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
+enum { BLOCKING_DISABLED, BLOCKING_ENABLED, BLOCKING_UNKNOWN };
+
 // Static structs
 typedef struct {
 	const char* conf;
@@ -88,8 +106,8 @@ typedef struct {
 	const char* whitelist;
 	const char* blacklist;
 	const char* gravity;
+	const char* regexlist;
 	const char* setupVars;
-	const char* wildcards;
 	const char* auditlist;
 	const char* dnsmasqconfig;
 } logFileNamesStruct;
@@ -97,7 +115,6 @@ typedef struct {
 typedef struct {
 	int queries;
 	int blocked;
-	int wildcardblocked;
 	int cached;
 	int unknown;
 	int forwarded;
@@ -108,12 +125,10 @@ typedef struct {
 	int clients_MAX;
 	int domains_MAX;
 	int overTime_MAX;
-	int wildcarddomains_MAX;
 	int gravity;
 	int gravity_conf;
 	int overTime;
-	int querytype[7];
-	int wildcarddomains;
+	int querytype[TYPE_MAX-1];
 	int forwardedqueries;
 	int reply_NODATA;
 	int reply_NXDOMAIN;
@@ -133,7 +148,7 @@ typedef struct {
 	int privacylevel;
 	bool ignore_localhost;
 	unsigned char blockingmode;
-	bool blockingregex;
+	bool regex_debugmode;
 } ConfigStruct;
 
 // Dynamic structs
@@ -143,13 +158,11 @@ typedef struct {
 	int timeidx;
 	unsigned char type;
 	unsigned char status;
-	// 0 = unknown, 1 = gravity.list (blocked), 2 = reply from upstream, 3 = cache, 4 = wildcard blocked
 	int domainID;
 	int clientID;
 	int forwardID;
 	bool db;
-	// the ID is a (signed) int in dnsmasq, so no need for a long int here
-	int id;
+	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	bool complete;
 	bool private;
 	unsigned long response; // saved in units of 1/10 milliseconds (1 = 0.1ms, 2 = 0.2ms, 2500 = 250.0ms, etc.)
@@ -180,7 +193,6 @@ typedef struct {
 	int count;
 	int blockedcount;
 	char *domain;
-	bool wildcard;
 	unsigned char regexmatch;
 } domainsDataStruct;
 
@@ -197,27 +209,12 @@ typedef struct {
 } overTimeDataStruct;
 
 typedef struct {
-	int wildcarddomains;
-	int domainnames;
-	int clientips;
-	int forwardedips;
-	int forwarddata;
-	int clientdata;
-	int querytypedata;
-} memoryStruct;
+	int count;
+	char **domains;
+} whitelistStruct;
 
 // Prepare timers, used mainly for debugging purposes
 #define NUMTIMERS 5
-enum { DATABASE_WRITE_TIMER, EXIT_TIMER, GC_TIMER, LISTS_TIMER, REGEX_TIMER };
-
-enum { QUERIES, FORWARDED, CLIENTS, DOMAINS, OVERTIME, WILDCARD };
-enum { DNSSEC_UNSPECIFIED, DNSSEC_SECURE, DNSSEC_INSECURE, DNSSEC_BOGUS, DNSSEC_ABANDONED, DNSSEC_UNKNOWN };
-enum { QUERY_UNKNOWN, QUERY_GRAVITY, QUERY_FORWARDED, QUERY_CACHE, QUERY_WILDCARD, QUERY_BLACKLIST };
-enum { TYPE_A = 1, TYPE_AAAA, TYPE_ANY, TYPE_SRV, TYPE_SOA, TYPE_PTR, TYPE_TXT, TYPE_MAX };
-enum { REPLY_UNKNOWN, REPLY_NODATA, REPLY_NXDOMAIN, REPLY_CNAME, REPLY_IP };
-enum { PRIVACY_SHOW_ALL = 0, PRIVACY_HIDE_DOMAINS, PRIVACY_HIDE_DOMAINS_CLIENTS, PRIVACY_MAXIMUM };
-enum { MODE_IP, MODE_NX, MODE_NULL };
-enum { REGEX_UNKNOWN, REGEX_BLOCKED, REGEX_NOTBLOCKED };
 
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57
@@ -244,10 +241,6 @@ extern bool debug;
 extern bool threadwritelock;
 extern bool threadreadlock;
 extern unsigned char blockingstatus;
-
-extern char ** wildcarddomains;
-
-extern memoryStruct memory;
 
 extern char * username;
 extern char timestamp[16];
