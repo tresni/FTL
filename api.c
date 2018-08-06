@@ -825,6 +825,7 @@ void getVersion(int *sock)
 {
 	const char * commit = GIT_HASH;
 	const char * tag = GIT_TAG;
+	const char *branch = getGitBranch();
 
 	// Extract first 7 characters of the hash
 	char hash[8];
@@ -835,12 +836,12 @@ void getVersion(int *sock)
 			ssend(
 					*sock,
 					"version %s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
-					GIT_VERSION, tag, GIT_BRANCH, hash, GIT_DATE
+					GIT_VERSION, tag, branch, hash, GIT_DATE
 			);
 		else {
 			if(!pack_str32(*sock, GIT_VERSION) ||
 					!pack_str32(*sock, (char *) tag) ||
-					!pack_str32(*sock, GIT_BRANCH) ||
+					!pack_str32(*sock, (char *) branch) ||
 					!pack_str32(*sock, hash) ||
 					!pack_str32(*sock, GIT_DATE))
 				return;
@@ -851,7 +852,7 @@ void getVersion(int *sock)
 			ssend(
 					*sock,
 					"version vDev-%s\ntag %s\nbranch %s\nhash %s\ndate %s\n",
-					hash, tag, GIT_BRANCH, hash, GIT_DATE
+					hash, tag, branch, hash, GIT_DATE
 			);
 		else {
 			char *hashVersion = calloc(6 + strlen(hash), sizeof(char));
@@ -860,7 +861,7 @@ void getVersion(int *sock)
 
 			if(!pack_str32(*sock, hashVersion) ||
 					!pack_str32(*sock, (char *) tag) ||
-					!pack_str32(*sock, GIT_BRANCH) ||
+					!pack_str32(*sock, (char *) branch) ||
 					!pack_str32(*sock, hash) ||
 					!pack_str32(*sock, GIT_DATE))
 				return;

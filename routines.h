@@ -61,7 +61,9 @@ void clearSetupVarsArray(void);
 bool insetupVarsArray(char * str);
 bool getSetupVarsBool(char * input);
 
+// args.c
 void parse_args(int argc, char* argv[]);
+char * getGitBranch(void);
 
 char* find_equals(const char* s);
 

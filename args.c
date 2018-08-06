@@ -77,7 +77,7 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "-b") == 0 ||
 		   strcmp(argv[i], "branch") == 0)
 		{
-			printf("%s\n",GIT_BRANCH);
+			printf("%s\n", getGitBranch());
 			exit(EXIT_SUCCESS);
 		}
 
@@ -166,4 +166,12 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_FAILURE);
 		}
 	}
+}
+
+char * getGitBranch(void)
+{
+	// Substitute branch "master" if branch is empty (tag-triggered build on CI)
+	if(strlen(GIT_BRANCH) < 1)
+		return "master";
+	return GIT_BRANCH;
 }
