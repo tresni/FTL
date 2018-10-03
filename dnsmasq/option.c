@@ -160,7 +160,8 @@ struct myoption {
 #define LOPT_DHCPTTL       348
 #define LOPT_TFTP_MTU      349
 #define LOPT_REPLY_DELAY   350
- 
+#define LOPT_UMBRELLA_IP    351
+
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
 #else
@@ -325,6 +326,7 @@ static const struct myoption opts[] =
     { "script-arp", 0, 0, LOPT_SCRIPT_ARP },
     { "dhcp-ttl", 1, 0 , LOPT_DHCPTTL },
     { "dhcp-reply-delay", 1, 0, LOPT_REPLY_DELAY },
+    { "umbrella-remote-ip", 0, 0, LOPT_UMBRELLA_IP },
     { NULL, 0, 0, 0 }
   };
 
@@ -497,6 +499,8 @@ static struct {
   { LOPT_IGNORE_ADDR, ARG_DUP, "<ipaddr>", gettext_noop("Ignore DNS responses containing ipaddr."), NULL }, 
   { LOPT_DHCPTTL, ARG_ONE, "<ttl>", gettext_noop("Set TTL in DNS responses with DHCP-derived addresses."), NULL }, 
   { LOPT_REPLY_DELAY, ARG_ONE, "<integer>", gettext_noop("Delay DHCP replies for at least number of seconds."), NULL },
+  { LOPT_UMBRELLA_IP, OPT_UMBRELLA_IP, NULL, gettext_noop("Send remote IP information upstream"), NULL },
+
   { 0, 0, NULL, NULL, NULL }
 }; 
 
