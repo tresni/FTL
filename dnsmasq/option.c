@@ -160,7 +160,7 @@ struct myoption {
 #define LOPT_DHCPTTL       348
 #define LOPT_TFTP_MTU      349
 #define LOPT_REPLY_DELAY   350
-#define LOPT_UMBRELLA_IP    351
+#define LOPT_UMBRELLA      351
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -326,7 +326,7 @@ static const struct myoption opts[] =
     { "script-arp", 0, 0, LOPT_SCRIPT_ARP },
     { "dhcp-ttl", 1, 0 , LOPT_DHCPTTL },
     { "dhcp-reply-delay", 1, 0, LOPT_REPLY_DELAY },
-    { "umbrella-remote-ip", 0, 0, LOPT_UMBRELLA_IP },
+    { "umbrella", 1, 0, LOPT_UMBRELLA },
     { NULL, 0, 0, 0 }
   };
 
@@ -499,7 +499,7 @@ static struct {
   { LOPT_IGNORE_ADDR, ARG_DUP, "<ipaddr>", gettext_noop("Ignore DNS responses containing ipaddr."), NULL }, 
   { LOPT_DHCPTTL, ARG_ONE, "<ttl>", gettext_noop("Set TTL in DNS responses with DHCP-derived addresses."), NULL }, 
   { LOPT_REPLY_DELAY, ARG_ONE, "<integer>", gettext_noop("Delay DHCP replies for at least number of seconds."), NULL },
-  { LOPT_UMBRELLA_IP, OPT_UMBRELLA_IP, NULL, gettext_noop("Send remote IP information upstream"), NULL },
+  { LOPT_UMBRELLA, ARG_ONE, "[=<device_id>,<org>,<asset>]", gettext_noop("Send Cisco Umbrella identifiers including remote IP."), NULL },
 
   { 0, 0, NULL, NULL, NULL }
 }; 
@@ -2234,6 +2234,27 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
     case LOPT_CPE_ID: /* --add-dns-client */
       if (arg)
 	daemon->dns_client_id = opt_string_alloc(arg);
+      break;
+
+    case LOPT_UMBRELLA: /* --umbrella */
+      // we always send remote IP information
+      // additional information can be sent if configured.
+      set_option_bool(OPT_UMBRELLA);
+      comma = split(arg);
+      if (arg) {
+        if (strlen(arg) != 16)
+          ret_err(_("Invalid Umbrella device ID"));
+        daemon->umbrella_device = opt_string_alloc(arg);
+        if (comma) {
+          arg = comma;
+          comma = split(arg);
+          if (arg && !atoi_check(arg, &daemon->umbrella_org)) {
+              ret_err(_("Invalid Umbrella organization ID"));
+            if (comma && !atoi_check(comma, &daemon->umbrella_asset))
+                ret_err(_("Invalid Umbrella asset ID"));
+          }
+        }
+      }
       break;
 
     case LOPT_ADD_MAC: /* --add-mac */

@@ -250,7 +250,7 @@ struct event_desc {
 #define OPT_MAC_B64        54
 #define OPT_MAC_HEX        55
 #define OPT_TFTP_APREF_MAC 56
-#define OPT_UMBRELLA_IP    57
+#define OPT_UMBRELLA       57
 #define OPT_LAST           58
 
 /* extra flags for my_syslog, we use a couple of facilities since they are known
@@ -985,6 +985,9 @@ extern struct daemon {
   int port, query_port, min_port, max_port;
   unsigned long local_ttl, neg_ttl, max_ttl, min_cache_ttl, max_cache_ttl, auth_ttl, dhcp_ttl, use_dhcp_ttl;
   char *dns_client_id;
+  int umbrella_org;
+  int umbrella_asset;
+  char *umbrella_device;
   struct hostsfile *addn_hosts;
   struct dhcp_context *dhcp, *dhcp6;
   struct ra_interface *ra_interfaces;
