@@ -326,7 +326,7 @@ static const struct myoption opts[] =
     { "script-arp", 0, 0, LOPT_SCRIPT_ARP },
     { "dhcp-ttl", 1, 0 , LOPT_DHCPTTL },
     { "dhcp-reply-delay", 1, 0, LOPT_REPLY_DELAY },
-    { "umbrella", 1, 0, LOPT_UMBRELLA },
+    { "umbrella", 2, 0, LOPT_UMBRELLA },
     { NULL, 0, 0, 0 }
   };
 
@@ -499,7 +499,7 @@ static struct {
   { LOPT_IGNORE_ADDR, ARG_DUP, "<ipaddr>", gettext_noop("Ignore DNS responses containing ipaddr."), NULL }, 
   { LOPT_DHCPTTL, ARG_ONE, "<ttl>", gettext_noop("Set TTL in DNS responses with DHCP-derived addresses."), NULL }, 
   { LOPT_REPLY_DELAY, ARG_ONE, "<integer>", gettext_noop("Delay DHCP replies for at least number of seconds."), NULL },
-  { LOPT_UMBRELLA, ARG_ONE, "[=<device_id>,<org>,<asset>]", gettext_noop("Send Cisco Umbrella identifiers including remote IP."), NULL },
+  { LOPT_UMBRELLA, ARG_ONE, "[=<optspec>]", gettext_noop("Send Cisco Umbrella identifiers including remote IP."), NULL },
 
   { 0, 0, NULL, NULL, NULL }
 }; 
@@ -2237,23 +2237,22 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       break;
 
     case LOPT_UMBRELLA: /* --umbrella */
-      // we always send remote IP information
-      // additional information can be sent if configured.
       set_option_bool(OPT_UMBRELLA);
-      comma = split(arg);
-      if (arg) {
-        if (strlen(arg) != 16)
-          ret_err(_("Invalid Umbrella device ID"));
-        daemon->umbrella_device = opt_string_alloc(arg);
-        if (comma) {
-          arg = comma;
-          comma = split(arg);
-          if (arg && !atoi_check(arg, &daemon->umbrella_org)) {
-              ret_err(_("Invalid Umbrella organization ID"));
-            if (comma && !atoi_check(comma, &daemon->umbrella_asset))
-                ret_err(_("Invalid Umbrella asset ID"));
-          }
+      while (arg) {
+        comma = split(arg);
+        if (strstr(arg, "deviceid:")) {
+          if (strlen(arg+9) != 16) ret_err(_("Invalid Umbrella device ID"));
+          daemon->umbrella_device = opt_string_alloc(arg+9);
         }
+        else if (strstr(arg, "orgid:")) {
+          if (!atoi_check(arg+6, &daemon->umbrella_org))
+            ret_err(_("Invalid Umbrella organization ID"));
+        }
+        else if (strstr(arg, "assetid:")) {
+          if (!atoi_check(arg+8, &daemon->umbrella_asset))
+            ret_err(_("Invalid Umbrella asset ID"));
+        }
+        arg = comma;
       }
       break;
 
